@@ -1,106 +1,37 @@
 import streamlit as st
-import torch
-import torch.nn as nn
-from torchvision.models import resnet18, ResNet18_Weights
-from torchvision import transforms
 from PIL import Image
-import numpy as np
-import os
+import torch
+from helpers import load_model, preprocess_image
+from gradcam import get_gradcam  # Optional, if you use Grad-CAM
 
-# --------------------------------------------------
-# Page config
-# --------------------------------------------------
-st.set_page_config(
-    page_title="Breast Cancer Detection",
-    page_icon="🩺",
-    layout="centered"
-)
+# Load your model
+model = load_model("model.pth")
+model.eval()
 
-st.title("🩺 Breast Cancer Detection System")
-st.write("Upload a mammogram image to predict cancer risk using a deep learning model.")
+st.title("Breast Cancer Detection System")
 
-# --------------------------------------------------
-# Model definition
-# --------------------------------------------------
-class BreastCancerCNN(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.model = resnet18(weights=ResNet18_Weights.DEFAULT)
-        self.model.fc = nn.Linear(self.model.fc.in_features, 1)
+# Upload image
+uploaded_file = st.file_uploader("Upload a mammogram image", type=["png", "jpg", "jpeg"])
 
-    def forward(self, x):
-        return self.model(x)
-
-# --------------------------------------------------
-# Load model (cached)
-# --------------------------------------------------
-@st.cache_resource
-def load_model():
-    model = BreastCancerCNN()
-
-    model_path = "breast_cancer_model_with_threshold.pth"
-    if not os.path.exists(model_path):
-        st.error("❌ Model file not found. Please add 'breast_cancer_cnn.pth' to the repository.")
-        st.stop()
-
-    state_dict = torch.load(model_path, map_location="cpu")
-    model.load_state_dict(state_dict)
-    model.eval()
-    return model
-
-model = load_model()
-
-# --------------------------------------------------
-# Image preprocessing
-# --------------------------------------------------
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
-])
-
-# --------------------------------------------------
-# Threshold selection
-# --------------------------------------------------
-st.subheader("🔧 Decision Threshold")
-threshold = st.slider(
-    "Adjust cancer detection sensitivity",
-    min_value=0.30,
-    max_value=0.90,
-    value=0.65,
-    step=0.01
-)
-
-# --------------------------------------------------
-# Image upload
-# --------------------------------------------------
-uploaded_file = st.file_uploader(
-    "📤 Upload a mammogram image",
-    type=["jpg", "jpeg", "png"]
-)
-
-if uploaded_file:
+if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    input_tensor = transform(image).unsqueeze(0)
+    # Preprocess image
+    input_tensor = preprocess_image(image)  # Implement in helpers.py
 
+    # Prediction
     with torch.no_grad():
-        logits = model(input_tensor)
-        probability = torch.sigmoid(logits).item()
+        output = model(input_tensor)
+        prob = torch.sigmoid(output).item()  # If binary classification
 
-    st.markdown("### 🔍 Prediction Result")
-    st.write(f"**Cancer Probability:** `{probability:.3f}`")
-
-    if probability >= threshold:
-        st.error("⚠️ **Cancer Detected**")
+    # Display result
+    if prob > 0.5:
+        st.error(f"Cancer Detected! Probability: {prob:.2f}")
     else:
-        st.success("✅ **Normal**")
+        st.success(f"No Cancer Detected. Probability: {prob:.2f}")
 
-    st.caption(
-        "⚠️ This tool is for educational and research purposes only. "
-        "It should not be used as a substitute for professional medical diagnosis."
-    )
+    # Optional: Grad-CAM visualization
+    if st.checkbox("Show Grad-CAM"):
+        cam_image = get_gradcam(model, input_tensor)  # Implement in gradcam.py
+        st.image(cam_image, caption="Grad-CAM", use_column_width=True)
