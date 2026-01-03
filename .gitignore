@@ -1,6 +1,15 @@
-__pycache__/
-.ipynb_checkpoints/
+# Ignore datasets
+train/
+data/
+dataset/
+
+# Ignore models
 *.pth
-*.h5
 *.pt
-.env
+*.h5
+
+# Ignore notebook checkpoints
+.ipynb_checkpoints/
+
+# Python cache
+__pycache__/

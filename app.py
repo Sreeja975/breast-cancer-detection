@@ -1,103 +1,67 @@
 import streamlit as st
+import torch
+import cv2
+import numpy as np
 from PIL import Image
-from helpers import (
-    load_model,
-    predict,
-    preprocess_image,
-    GradCAM,
-    overlay_gradcam
-)
+from torchvision import transforms
 
-# =====================================================
-# PAGE CONFIG
-# =====================================================
-st.set_page_config(
-    page_title="Breast Cancer Detection",
-    page_icon="🩺",
-    layout="centered"
-)
+from model import BreastCancerCNN
+from gradcam import GradCAM
 
-# =====================================================
-# HEADER
-# =====================================================
-st.title("🩺 Breast Cancer Detection System")
-st.markdown(
-    """
-    This application uses a **ResNet-18 deep learning model** to detect  
-    **breast cancer** from medical images.
+# ----------------------
+# Page config
+# ----------------------
+st.set_page_config(page_title="Breast Cancer Detection", layout="centered")
+st.title("🩺 Breast Cancer Detection App")
+st.write("Deep Learning with ResNet18 + Grad-CAM")
 
-    ⚠️ **For educational purposes only.**
-    """
-)
+# ----------------------
+# Load model
+# ----------------------
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-st.divider()
+model = BreastCancerCNN().to(device)
+model.load_state_dict(torch.load("breast_cancer_cnn.pth", map_location=device))
+model.eval()
 
-# =====================================================
-# LOAD MODEL (CACHED)
-# =====================================================
-@st.cache_resource
-def get_model():
-    return load_model()
+gradcam = GradCAM(model, model.model.layer4)
 
-model = get_model()
+# ----------------------
+# Image preprocessing
+# ----------------------
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406],
+                         [0.229, 0.224, 0.225])
+])
 
-# =====================================================
-# FILE UPLOAD
-# =====================================================
-uploaded_file = st.file_uploader(
-    "📤 Upload a medical image (JPG / PNG)",
-    type=["jpg", "jpeg", "png"]
-)
+# ----------------------
+# Upload image
+# ----------------------
+uploaded_file = st.file_uploader("Upload a breast image", type=["png", "jpg", "jpeg"])
 
-# =====================================================
-# MAIN LOGIC
-# =====================================================
-if uploaded_file is not None:
+if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    st.image(
-        image,
-        caption="Uploaded Image",
-        use_column_width=True
-    )
+    input_tensor = transform(image).unsqueeze(0).to(device)
 
-    st.divider()
+    with torch.no_grad():
+        output = model(input_tensor)
+        prob = torch.sigmoid(output).item()
 
-    if st.button("🔍 Analyze Image"):
-        with st.spinner("Analyzing image using deep learning model..."):
-            prediction, confidence = predict(image, model)
+    prediction = "Cancer" if prob >= 0.7 else "Normal"
 
-        # ---------------- RESULT ----------------
-        if prediction == "Cancer":
-            st.error("⚠️ **Cancer Detected**")
-        else:
-            st.success("✅ **No Cancer Detected**")
+    st.subheader(f"Prediction: **{prediction}**")
+    st.write(f"Confidence: **{prob:.2f}**")
 
-        st.metric(
-            label="Confidence",
-            value=f"{confidence:.2%}"
-        )
+    # Grad-CAM
+    cam = gradcam.generate(input_tensor)
 
-        # ---------------- GRAD-CAM ----------------
-        st.divider()
-        st.subheader("🔬 Model Explainability (Grad-CAM)")
+    img_np = np.array(image.resize((224, 224)))
+    heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+    overlay = cv2.addWeighted(img_np, 0.6, heatmap, 0.4, 0)
 
-        cam_generator = GradCAM(model)
-        image_tensor = preprocess_image(image)
-        cam = cam_generator.generate(image_tensor)
-        cam_image = overlay_gradcam(image, cam)
-
-        st.image(
-            cam_image,
-            caption="Grad-CAM Visualization",
-            use_column_width=True
-        )
-
-# =====================================================
-# FOOTER
-# =====================================================
-st.divider()
-st.caption(
-    "🧪 This tool is intended for **academic and research demonstration only**. "
-    "Do NOT use it for real medical diagnosis."
-)
+    st.subheader("Grad-CAM Visualization")
+    st.image(overlay, use_container_width=True)
