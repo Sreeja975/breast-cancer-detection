@@ -1,67 +1,106 @@
 import streamlit as st
 import torch
-import cv2
-import numpy as np
-from PIL import Image
+import torch.nn as nn
+from torchvision.models import resnet18, ResNet18_Weights
 from torchvision import transforms
+from PIL import Image
+import numpy as np
+import os
 
-from model import BreastCancerCNN
-from gradcam import GradCAM
-
-# ----------------------
+# --------------------------------------------------
 # Page config
-# ----------------------
-st.set_page_config(page_title="Breast Cancer Detection", layout="centered")
-st.title("🩺 Breast Cancer Detection App")
-st.write("Deep Learning with ResNet18 + Grad-CAM")
+# --------------------------------------------------
+st.set_page_config(
+    page_title="Breast Cancer Detection",
+    page_icon="🩺",
+    layout="centered"
+)
 
-# ----------------------
-# Load model
-# ----------------------
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+st.title("🩺 Breast Cancer Detection System")
+st.write("Upload a mammogram image to predict cancer risk using a deep learning model.")
 
-model = BreastCancerCNN().to(device)
-model.load_state_dict(torch.load("breast_cancer_cnn.pth", map_location=device))
-model.eval()
+# --------------------------------------------------
+# Model definition
+# --------------------------------------------------
+class BreastCancerCNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = resnet18(weights=ResNet18_Weights.DEFAULT)
+        self.model.fc = nn.Linear(self.model.fc.in_features, 1)
 
-gradcam = GradCAM(model, model.model.layer4)
+    def forward(self, x):
+        return self.model(x)
 
-# ----------------------
+# --------------------------------------------------
+# Load model (cached)
+# --------------------------------------------------
+@st.cache_resource
+def load_model():
+    model = BreastCancerCNN()
+
+    model_path = "breast_cancer_cnn.pth"
+    if not os.path.exists(model_path):
+        st.error("❌ Model file not found. Please add 'breast_cancer_cnn.pth' to the repository.")
+        st.stop()
+
+    state_dict = torch.load(model_path, map_location="cpu")
+    model.load_state_dict(state_dict)
+    model.eval()
+    return model
+
+model = load_model()
+
+# --------------------------------------------------
 # Image preprocessing
-# ----------------------
+# --------------------------------------------------
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406],
-                         [0.229, 0.224, 0.225])
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
 ])
 
-# ----------------------
-# Upload image
-# ----------------------
-uploaded_file = st.file_uploader("Upload a breast image", type=["png", "jpg", "jpeg"])
+# --------------------------------------------------
+# Threshold selection
+# --------------------------------------------------
+st.subheader("🔧 Decision Threshold")
+threshold = st.slider(
+    "Adjust cancer detection sensitivity",
+    min_value=0.30,
+    max_value=0.90,
+    value=0.65,
+    step=0.01
+)
+
+# --------------------------------------------------
+# Image upload
+# --------------------------------------------------
+uploaded_file = st.file_uploader(
+    "📤 Upload a mammogram image",
+    type=["jpg", "jpeg", "png"]
+)
 
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    input_tensor = transform(image).unsqueeze(0).to(device)
+    input_tensor = transform(image).unsqueeze(0)
 
     with torch.no_grad():
-        output = model(input_tensor)
-        prob = torch.sigmoid(output).item()
+        logits = model(input_tensor)
+        probability = torch.sigmoid(logits).item()
 
-    prediction = "Cancer" if prob >= 0.7 else "Normal"
+    st.markdown("### 🔍 Prediction Result")
+    st.write(f"**Cancer Probability:** `{probability:.3f}`")
 
-    st.subheader(f"Prediction: **{prediction}**")
-    st.write(f"Confidence: **{prob:.2f}**")
+    if probability >= threshold:
+        st.error("⚠️ **Cancer Detected**")
+    else:
+        st.success("✅ **Normal**")
 
-    # Grad-CAM
-    cam = gradcam.generate(input_tensor)
-
-    img_np = np.array(image.resize((224, 224)))
-    heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
-    overlay = cv2.addWeighted(img_np, 0.6, heatmap, 0.4, 0)
-
-    st.subheader("Grad-CAM Visualization")
-    st.image(overlay, use_container_width=True)
+    st.caption(
+        "⚠️ This tool is for educational and research purposes only. "
+        "It should not be used as a substitute for professional medical diagnosis."
+    )
