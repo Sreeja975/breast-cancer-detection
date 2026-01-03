@@ -38,7 +38,7 @@ class BreastCancerCNN(nn.Module):
 def load_model():
     model = BreastCancerCNN()
 
-    model_path = "breast_cancer_cnn.pth"
+    model_path = "breast_cancer_model_with_threshold.pth"
     if not os.path.exists(model_path):
         st.error("❌ Model file not found. Please add 'breast_cancer_cnn.pth' to the repository.")
         st.stop()
