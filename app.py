@@ -1,36 +1,49 @@
 import streamlit as st
 from PIL import Image
 import torch
-from helpers import load_model, preprocess_image
+import numpy as np
+import cv2
 
-# Load your model
-model = load_model("breast_cancer_model_with_threshold.pth")
-model.eval()
+from helpers import load_model, preprocess_image
+from gradcam import GradCAM, overlay_gradcam
+
+st.set_page_config(page_title="Breast Cancer Detection")
 
 st.title("Breast Cancer Detection System")
 
-# Upload image
-uploaded_file = st.file_uploader("Upload a mammogram image", type=["png", "jpg", "jpeg"])
+model = load_model("breast_cancer_model_with_threshold.pth")
 
-if uploaded_file is not None:
+if model is None:
+    st.error("❌ Model file not found")
+    st.stop()
+
+uploaded_file = st.file_uploader(
+    "Upload a mammogram image",
+    type=["png", "jpg", "jpeg"]
+)
+
+if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Preprocess image
-    input_tensor = preprocess_image(image)  # Implement in helpers.py
+    input_tensor = preprocess_image(image)
 
-    # Prediction
     with torch.no_grad():
         output = model(input_tensor)
-        prob = torch.sigmoid(output).item()  # If binary classification
+        prob = torch.sigmoid(output).item()
 
-    # Display result
     if prob > 0.5:
-        st.error(f"Cancer Detected! Probability: {prob:.2f}")
+        st.error(f"Cancer Detected (Confidence: {prob:.2f})")
     else:
-        st.success(f"No Cancer Detected. Probability: {prob:.2f}")
+        st.success(f"No Cancer Detected (Confidence: {1 - prob:.2f})")
 
-    # Optional: Grad-CAM visualization
     if st.checkbox("Show Grad-CAM"):
-        cam_image = get_gradcam(model, input_tensor)  # Implement in gradcam.py
-        st.image(cam_image, caption="Grad-CAM", use_column_width=True)
+        target_layer = model.backbone.layer4[-1]
+        cam = GradCAM(model, target_layer)
+
+        heatmap = cam.generate(input_tensor)
+
+        img_np = np.array(image)
+        cam_image = overlay_gradcam(img_np, heatmap)
+
+        st.image(cam_image, caption="Grad-CAM Visualization", use_column_width=True)
