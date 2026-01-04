@@ -4,7 +4,7 @@ import torch
 from helpers import load_model, preprocess_image
 
 # Load your model
-model = load_model("model.pth")
+model = load_model("breast_cancer_model_with_threshold.pth")
 model.eval()
 
 st.title("Breast Cancer Detection System")
