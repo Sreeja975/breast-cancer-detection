@@ -11,7 +11,9 @@ def load_model(model_path):
 
     model = BreastCancerCNN()
     model.load_state_dict(
-        torch.load(model_path, map_location="cpu")
+        torch.load(model_path,
+        map_location="cpu",
+        weights_only=False)
     )
     model.eval()
     return model
