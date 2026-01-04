@@ -56,15 +56,10 @@ if uploaded_file:
     # Grad-CAM
     # -------------------------
     if st.checkbox("Show Grad-CAM"):
-        target_layer = model.model.layer4[1].conv2
-        heatmap = generate_gradcam(model, input_tensor, target_layer)
+       target_layer = model.model.layer4[1].conv2
+       cam = GradCAM(model, target_layer)
 
-        heatmap = cv2.applyColorMap(
-            np.uint8(255 * heatmap), cv2.COLORMAP_JET
-        )
+       heatmap = cam.generate(input_tensor)
+       overlay = overlay_gradcam(image, heatmap)
 
-        overlay = cv2.addWeighted(
-            np.array(image.resize((224,224))), 0.6, heatmap, 0.4, 0
-        )
-
-        st.image(overlay, caption="Grad-CAM Visualization", use_container_width=True)
+       st.image(overlay, caption="Grad-CAM Visualization", use_container_width=True)
