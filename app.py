@@ -6,7 +6,7 @@ import cv2
 
 from model import BreastCancerCNN
 from helpers import preprocess_image
-from gradcam import generate_gradcam
+from gradcam import GradCAM, overlay_gradcam
 
 # -------------------------
 # Config
