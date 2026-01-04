@@ -2,7 +2,6 @@ import streamlit as st
 from PIL import Image
 import torch
 from helpers import load_model, preprocess_image
-from gradcam import get_gradcam  # Optional, if you use Grad-CAM
 
 # Load your model
 model = load_model("model.pth")
