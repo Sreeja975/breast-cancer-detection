@@ -2,7 +2,6 @@ import streamlit as st
 from PIL import Image
 import torch
 import numpy as np
-from opencv import cv2
 from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset
 import os
